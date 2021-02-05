@@ -235,9 +235,20 @@ function anmeldebestätigung() {
   let kurs: string = rowValues[kursIndexB - 1];
 
   let betrag: number = kursPreis(kurs);
+  let einzug: boolean = rowValues[zahlungsArtIndex - 1].startsWith("SEPA");
+  let zahlungsText: string;
+  if (einzug) {
+    zahlungsText =
+      "Der Betrag von " + betrag + "€ wird per Lastschrift abgebucht.";
+  } else {
+    zahlungsText =
+      "Bitte überweisen Sie " +
+      betrag +
+      "€ auf das Konto DE62 7015 0000 0904 1577 81 bei der Stadtsparkasse München unter Angabe der Kursnummer.";
+  }
   template.anrede = anrede;
   template.kurs = kurs;
-  template.betrag = betrag;
+  template.zahlungstext = zahlungsText;
 
   SpreadsheetApp.getUi().alert(
     herrFrau + " " + name + " bucht den Kurs " + kurs
@@ -249,6 +260,7 @@ function anmeldebestätigung() {
     htmlBody: htmlText,
     name: "Radfahrschule ADFC München e.V.",
     replyTo: "radfahrschule@adfc-muenchen.de",
+    attachments: attachmentFiles(),
   };
   GmailApp.sendEmail(emailTo, subject, textbody, options);
   // update sheet
