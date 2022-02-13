@@ -8,9 +8,25 @@
       <?= anrede ?>,<br /><br />
       hiermit bestätigen wir Ihnen, daß Sie für den Radfahrkurs <br />
       <?= kurs ?><br />
-      verbindlich angemeldet sind.<br />
+      verbindlich angemeldet sind. Die Kurstermine sind:<br />
+
+      <? for (let termin of termine) { ?>
+      &nbsp;&nbsp;&nbsp;&nbsp;<?= termin ?><br />
+      <? } ?>
       <?= zahlungstext ?><br />
-      Mit freundlichen Grüßen,<br />
+      Ihr Kurs findet auf der Theresienwiese statt.<br />
+      Treffpunkt ist das ADFC Radlerhaus, Platenstraße 4, 80336 München.<br />
+      Von den Teilnahmebedingungen habe Sie bereits mit Ihrer Anmeldung<br />
+      Kenntnis genommen. Anregungen und Tipps für Teilnehmende sind im<br />
+      Anhang dieser Mail beigefügt. Bitte lesen Sie die<br />
+      Teilnahmebedingungen und die Tipps für Teilnehmende vor Kursbeginn<br />
+      nochmal kurz durch und seien Sie bitte am ersten Kurstag möglichst<br />
+      etwas früher da.<br />
+      <br />
+      Von Ihren Kursleitern werden Sie einige Tage vor Kursbeginn nochmals
+      angeschrieben.<br />
+      <br />
+      Wir wünschen Ihnen viel Spaß und Erfolg in Ihrem Kurs.<br />
       <br />
       Allgemeiner Deutscher Fahrrad-Club München e.V.<br />
       Platenstraße 4<br />
