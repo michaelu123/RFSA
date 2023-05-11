@@ -51,7 +51,7 @@ interface Event {
   [others: string]: any;
 }
 
-function isEmpty(str: string | undefined | null) {
+function isEmpty(str: string | undefined | null): boolean {
   if (typeof str == "number") return false;
   return !str || 0 === str.length; // I think !str is sufficient...
 }
@@ -144,7 +144,7 @@ function addColumn(
   return max;
 }
 
-function anredeText(herrFrau: string, name: string) {
+function anredeText(herrFrau: string, name: string): string {
   if (herrFrau === "Herr") {
     return "Sehr geehrter Herr " + name;
   } else {
@@ -152,7 +152,7 @@ function anredeText(herrFrau: string, name: string) {
   }
 }
 
-function heuteString() {
+function heuteString(): string {
   return Utilities.formatDate(
     new Date(),
     SpreadsheetApp.getActive().getSpreadsheetTimeZone(),
@@ -160,7 +160,7 @@ function heuteString() {
   );
 }
 
-function attachmentFiles() {
+function attachmentFiles(): GoogleAppsScript.Drive.File[] {
   let thisFileId = SpreadsheetApp.getActive().getId();
   let thisFile = DriveApp.getFileById(thisFileId);
   let parent = thisFile.getParents().next();
@@ -176,12 +176,13 @@ function attachmentFiles() {
   return files; // why not use PDFs directly??
 }
 
-function kursPreis(_kurs: string) {
+function kursPreis(_kurs: string): number {
   return 100;
 }
 
 function anmeldebestätigung() {
   if (!inited) init();
+  if (!updateReste()) return;
   let sheet = SpreadsheetApp.getActiveSheet();
   if (sheet.getName() != "Buchungen") {
     SpreadsheetApp.getUi().alert(
@@ -384,10 +385,15 @@ function sendVerifEmail(rowValues: any[]) {
     "Allgemeiner Deutscher Fahrrad-Club München e.V.\n" +
     "Platenstraße 4\n" +
     "80336 München\n" +
-    "Tel. 089 | 773429 Fax 089 | 778537\n" +
+    "Tel. 089 | 46133830 (Mo. bis Mi. + Fr.)\n" +
     "radfahrschule@adfc-muenchen.de\n" +
-    "www.adfc-muenchen.de\n";
-  GmailApp.sendEmail(empfaenger, subject, body);
+    "https://muenchen.adfc.de/radfahrschule\n";
+  let options = {
+    name: "Radfahrschule ADFC München e.V.",
+    replyTo: "radfahrschule@adfc-muenchen.de",
+  };
+
+  GmailApp.sendEmail(empfaenger, subject, body, options);
 }
 
 function checkBuchung(e: Event) {
@@ -427,12 +433,14 @@ function checkBuchung(e: Event) {
   );
   let restChanged = false;
   let kursFound = false;
+  let ausgebucht = false;
   for (let j = 0; j < kurseS.length; j++) {
     if (kurseS[j][0] == kursGebucht) {
       kursFound = true;
       let rest = kurseSheet.getRange(2 + j, restIndex).getValue();
       if (rest <= 0) {
         msgs.push("Der Kurs '" + kursGebucht + "' ist leider ausgebucht.");
+        ausgebucht = true;
         sheet.getRange(row, 1).setNote("Ausgebucht");
       } else {
         msgs.push("Sie sind für den Kurs '" + kursGebucht + "' vorgemerkt.");
@@ -453,12 +461,13 @@ function checkBuchung(e: Event) {
     updateForm();
   }
   Logger.log("msgs: ", msgs, msgs.length);
-  sendeAntwort(e, msgs, sheet, row);
+  sendeAntwort(e, msgs, ausgebucht, sheet, row);
 }
 
 function sendeAntwort(
   e: Event,
   msgs: Array<string>,
+  ausgebucht: boolean,
   sheet: GoogleAppsScript.Spreadsheet.Sheet,
   row: number,
 ) {
@@ -487,6 +496,7 @@ function sendeAntwort(
     HtmlService.createTemplateFromFile(templateFile);
   template.anrede = anrede(e);
   template.msgs = msgs;
+  template.ausgebucht = ausgebucht;
   template.verifLink =
     "https://docs.google.com/forms/d/e/1FAIpQLSfvz7OuEmrXCe2IdxP9ZgWmRiYk5LmBckX-DBljGh6bVCJQeg/viewform?usp=pp_url&entry.1730791681=Ja&entry.1561755994=" +
     encodeURIComponent(emailTo);
@@ -505,7 +515,7 @@ function sendeAntwort(
   GmailApp.sendEmail(emailTo, subject, textbody, options);
 }
 
-function anrede(e: Event) {
+function anrede(e: Event): string {
   // if Name is not set, nv["Name"] has value [""], i.e. not null, not [], not [null]!
   let anrede: string = e.namedValues["Anrede"][0];
   // let vorname: string = e.namedValues["Vorname"][0];
@@ -534,7 +544,7 @@ function update() {
   docLock.releaseLock();
 }
 
-function updateReste() {
+function updateReste(): boolean {
   let kurseRows = kurseSheet.getLastRow() - 1; // first row = headers
   let kurseCols = kurseSheet.getLastColumn();
   let kurseVals = kurseSheet.getRange(2, 1, kurseRows, kurseCols).getValues();
@@ -544,6 +554,7 @@ function updateReste() {
   let buchungenCols = buchungenSheet.getLastColumn();
   let buchungenVals: any[][];
   let buchungenNotes: string[][];
+  let res = true;
   // getRange with 0 rows throws an exception instead of returning an empty array
   if (buchungenRows == 0) {
     buchungenVals = [];
@@ -578,6 +589,7 @@ function updateReste() {
     let rest: number = anzahl - gebucht;
     if (rest < 0) {
       SpreadsheetApp.getUi().alert("Der Kurs '" + kurs + "' ist überbucht!");
+      res = false;
       rest = 0;
     }
     let restR: number = kurseVals[r][restIndex - 1];
@@ -594,6 +606,7 @@ function updateReste() {
       );
     }
   }
+  return res;
 }
 
 function updateForm() {
@@ -609,12 +622,15 @@ function updateForm() {
     let kurseObj: MapS2S = {};
     for (let hdr in kurseHdrs) {
       let idx = kurseHdrs[hdr];
+      if (idx > restIndex) continue;
       // Logger.log("hdr %s %s", hdr, idx);
       kurseObj[hdr] = kurseVals[i][idx - 1];
     }
     let ok = true;
     // check if all cells of Kurse row are nonempty
     for (let hdr in kurseHdrs) {
+      let idx = kurseHdrs[hdr];
+      if (idx > restIndex) continue;
       if (!hdr.startsWith("Tag") && isEmpty(kurseObj[hdr])) ok = false;
     }
     // if (ok) {
@@ -709,9 +725,9 @@ function sendWrongIbanEmail(anrede: string, empfaenger: string, iban: string) {
     "Allgemeiner Deutscher Fahrrad-Club München e.V.\n" +
     "Platenstraße 4\n" +
     "80336 München\n" +
-    "Tel. 089 | 773429 Fax 089 | 778537\n" +
+    "Tel. 089 | 46133830 (Mo. bis Mi. + Fr.)\n" +
     "radfahrschule@adfc-muenchen.de\n" +
-    "www.adfc-muenchen.de\n";
+    "https://muenchen.adfc.de/radfahrschule\n";
 
   GmailApp.sendEmail(empfaenger, subject, body);
 }
@@ -783,7 +799,7 @@ let ibanLen: MapS2I = {
   MT: 31,
 };
 
-function isValidIban(iban: string) {
+function isValidIban(iban: string): boolean {
   if (!iban.match(/^[\dA-Z]+$/)) return false;
   let len = iban.length;
   if (len != ibanLen[iban.substr(0, 2)]) return false;
@@ -927,7 +943,7 @@ function printKursMembers() {
   //ss.deleteSheet(sheet);
 }
 
-function objectToQueryString(obj: any) {
+function objectToQueryString(obj: any): string {
   return Object.keys(obj)
     .map(function (key) {
       return Utilities.formatString("&%s=%s", key, obj[key]);
