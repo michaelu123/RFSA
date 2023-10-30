@@ -16,7 +16,7 @@ let buchungenSheet: GoogleAppsScript.Spreadsheet.Sheet;
 // Indices are 1-based!!
 // Buchungen
 let mailIndex: number; // E-Mail-Adresse
-let kursIndexB: number; // Welchen Kurs möchten sie belegen?
+let kursIndexB: number; // Welchen Kurs möchten Sie belegen?
 let herrFrauIndex: number; // Anrede
 let nameIndex: number; // Name
 let zustimmungsIndex: number; // Zustimmung zur SEPA-Lastschrift
@@ -43,7 +43,7 @@ let printCols = new Map([
   ["Ort", "Ort"],
 ]);
 
-const kursFrage = "Welchen Kurs möchten sie belegen?";
+const kursFrage = "Welchen Kurs möchten Sie belegen?";
 
 interface Event {
   namedValues: { [others: string]: string[] };
@@ -102,7 +102,7 @@ function init() {
     } else if (sheet.getName() == "Buchungen") {
       buchungenSheet = sheet;
       mailIndex = sheetHeaders["E-Mail-Adresse"];
-      kursIndexB = sheetHeaders["Welchen Kurs möchten sie belegen?"];
+      kursIndexB = sheetHeaders[kursFrage];
       herrFrauIndex = sheetHeaders["Anrede"];
       nameIndex = sheetHeaders["Name"];
       zustimmungsIndex = sheetHeaders["Zustimmung zur SEPA-Lastschrift"];
