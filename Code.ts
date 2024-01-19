@@ -18,6 +18,7 @@ let buchungenSheet: GoogleAppsScript.Spreadsheet.Sheet;
 let mailIndex: number; // E-Mail-Adresse
 let kursIndexB: number; // Welchen Kurs möchten Sie belegen?
 let herrFrauIndex: number; // Anrede
+let vornameIndex: number; // Vorname
 let nameIndex: number; // Name
 let zustimmungsIndex: number; // Zustimmung zur SEPA-Lastschrift
 let bestätigungsIndex: number; // Bestätigung (der Teilnahmebedingungen)
@@ -32,6 +33,8 @@ let tag1Index: number; // Tag 1
 let tag8Index: number; // Tag 8
 let anzahlIndex: number; // Kursplätze
 let restIndex: number; // Restplätze
+let ersatz1Index: number; // Ersatztermin 1
+let ersatz2Index: number; // Ersatztermin 2
 
 // map Buchungen headers to print headers
 let printCols = new Map([
@@ -45,7 +48,7 @@ let printCols = new Map([
 
 const kursFrage = "Welchen Kurs möchten Sie belegen?";
 
-interface Event {
+interface SSEvent {
   namedValues: { [others: string]: string[] };
   range: GoogleAppsScript.Spreadsheet.Range;
   [others: string]: any;
@@ -53,12 +56,13 @@ interface Event {
 
 function isEmpty(str: string | undefined | null): boolean {
   if (typeof str == "number") return false;
+  if (str == "-") return true;
   return !str || 0 === str.length; // I think !str is sufficient...
 }
 
 function test() {
   init();
-  let e: Event = {
+  let e: SSEvent = {
     namedValues: {
       Vorname: ["Michael"],
       Name: ["Uhlenberg"],
@@ -76,6 +80,8 @@ function init() {
   let ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheets = ss.getSheets();
   for (let sheet of sheets) {
+    let numRows = sheet.getLastRow();
+    if (numRows == 0) continue;
     let sheetName = sheet.getName();
     let sheetHeaders: MapS2I = {};
     // Logger.log("sheetName %s", sheetName);
@@ -97,6 +103,8 @@ function init() {
       uhrZeitIndex = sheetHeaders["Uhrzeit"];
       tag1Index = sheetHeaders["Tag 1"];
       tag8Index = sheetHeaders["Tag 8"];
+      ersatz1Index = sheetHeaders["Ersatztermin 1"];
+      ersatz2Index = sheetHeaders["Ersatztermin 2"];
       anzahlIndex = sheetHeaders["Kursplätze"];
       restIndex = sheetHeaders["Restplätze"];
     } else if (sheet.getName() == "Buchungen") {
@@ -104,6 +112,7 @@ function init() {
       mailIndex = sheetHeaders["E-Mail-Adresse"];
       kursIndexB = sheetHeaders[kursFrage];
       herrFrauIndex = sheetHeaders["Anrede"];
+      vornameIndex = sheetHeaders["Vorname"];
       nameIndex = sheetHeaders["Name"];
       zustimmungsIndex = sheetHeaders["Zustimmung zur SEPA-Lastschrift"];
       bestätigungsIndex = sheetHeaders["Bestätigung"];
@@ -177,7 +186,7 @@ function attachmentFiles(): GoogleAppsScript.Drive.File[] {
 }
 
 function kursPreis(_kurs: string): number {
-  return 100;
+  return 120;
 }
 
 function anmeldebestätigung() {
@@ -271,6 +280,16 @@ function anmeldebestätigung() {
     termine.push(any2Str(kursRow[tag1Index + 5], "E 'den' dd.MM", false));
   if (!isEmpty(kursRow[tag1Index + 6]))
     termine.push(any2Str(kursRow[tag1Index + 6], "E 'den' dd.MM", false));
+  if (!isEmpty(kursRow[ersatz1Index - 1]))
+    termine.push(
+      "Ersatztermin 1: " +
+        any2Str(kursRow[ersatz1Index - 1], "E 'den' dd.MM", false),
+    );
+  if (!isEmpty(kursRow[ersatz2Index - 1]))
+    termine.push(
+      "Ersatztermin 2: " +
+        any2Str(kursRow[ersatz2Index - 1], "E 'den' dd.MM", false),
+    );
   termine.push("jeweils von " + kursRow[uhrZeitIndex - 1]);
   Logger.log("termine %s", termine);
 
@@ -304,10 +323,11 @@ function onOpen() {
     .addItem("Anmeldebestätigung senden", "anmeldebestätigung")
     .addItem("Update", "update")
     .addItem("Kursteilnehmer drucken", "printKursMembers")
+    .addItem("Anmeldung prüfen", "checkBuchungManually")
     .addToUi();
 }
 
-function dispatch(e: Event) {
+function dispatch(e: SSEvent) {
   let docLock = LockService.getScriptLock();
   let locked = docLock.tryLock(30000);
   if (!locked) {
@@ -396,7 +416,7 @@ function sendVerifEmail(rowValues: any[]) {
   GmailApp.sendEmail(empfaenger, subject, body, options);
 }
 
-function checkBuchung(e: Event) {
+function checkBuchung(e: SSEvent) {
   let range: GoogleAppsScript.Spreadsheet.Range = e.range;
   let sheet = range.getSheet();
   let row = range.getRow();
@@ -465,7 +485,7 @@ function checkBuchung(e: Event) {
 }
 
 function sendeAntwort(
-  e: Event,
+  e: SSEvent,
   msgs: Array<string>,
   ausgebucht: boolean,
   sheet: GoogleAppsScript.Spreadsheet.Sheet,
@@ -515,7 +535,7 @@ function sendeAntwort(
   GmailApp.sendEmail(emailTo, subject, textbody, options);
 }
 
-function anrede(e: Event): string {
+function anrede(e: SSEvent): string {
   // if Name is not set, nv["Name"] has value [""], i.e. not null, not [], not [null]!
   let anrede: string = e.namedValues["Anrede"][0];
   // let vorname: string = e.namedValues["Vorname"][0];
@@ -626,17 +646,22 @@ function updateForm() {
       // Logger.log("hdr %s %s", hdr, idx);
       kurseObj[hdr] = kurseVals[i][idx - 1];
     }
-    let ok = true;
     // check if all cells of Kurse row are nonempty
     for (let hdr in kurseHdrs) {
       let idx = kurseHdrs[hdr];
       if (idx > restIndex) continue;
-      if (!hdr.startsWith("Tag") && isEmpty(kurseObj[hdr])) ok = false;
+      if (
+        !hdr.startsWith("Tag") &&
+        !hdr.startsWith("Ersatztermin") &&
+        isEmpty(kurseObj[hdr])
+      ) {
+        SpreadsheetApp.getUi().alert(
+          "Das Feld " + hdr + " darf nicht leer sein!",
+        );
+        return;
+      }
     }
-    // if (ok) {
-    //   ok = +kurseObj["DZ-Rest"] > 0 || +kurseObj["EZ-Rest"] > 0;
-    // }
-    if (ok) kurseObjs.push(kurseObj);
+    kurseObjs.push(kurseObj);
   }
   Logger.log("kurseObjs=%s", kurseObjs);
 
@@ -670,7 +695,7 @@ function updateForm() {
     else freiText = ", noch " + rest + " Plätze frei";
 
     let desc =
-      mr +
+      bolderizeWord(mr) +
       ", " +
       kursObj["Uhrzeit"] +
       ", " +
@@ -685,6 +710,12 @@ function updateForm() {
       (isEmpty(kursObj["Tag 6"]) ? "" : ", " + any2Str(kursObj["Tag 6"])) +
       (isEmpty(kursObj["Tag 7"]) ? "" : ", " + any2Str(kursObj["Tag 7"])) +
       (isEmpty(kursObj["Tag 8"]) ? "" : ", " + any2Str(kursObj["Tag 8"])) +
+      (isEmpty(kursObj["Ersatztermin 1"])
+        ? ""
+        : ", Ersatztermin 1: " + any2Str(kursObj["Ersatztermin 1"])) +
+      (isEmpty(kursObj["Ersatztermin 2"])
+        ? ""
+        : ", Ersatztermin 2: " + any2Str(kursObj["Ersatztermin 2"])) +
       freiText;
     Logger.log("mr %s desc %s", mr, desc);
     descs.push(desc);
@@ -715,7 +746,7 @@ function sendWrongIbanEmail(anrede: string, empfaenger: string, iban: string) {
   var subject = "Falsche IBAN";
   var body =
     anrede +
-    ",\nDie von Ihnen bei der Buchung von ADFC Mehrtageskurse übermittelte IBAN " +
+    ",\nDie von Ihnen bei der Buchung von ADFC Anfängerkursen übermittelte IBAN " +
     iban +
     " ist leider falsch! Bitte wiederholen Sie die Buchung mit einer korrekten IBAN.";
 
@@ -725,7 +756,7 @@ function sendWrongIbanEmail(anrede: string, empfaenger: string, iban: string) {
     "Allgemeiner Deutscher Fahrrad-Club München e.V.\n" +
     "Platenstraße 4\n" +
     "80336 München\n" +
-    "Tel. 089 | 46133830 (Mo. bis Mi. + Fr.)\n" +
+    "Tel. 089 | 46133830 (Mo. 10-11 Uhr, Fr. 12-13 Uhr)\n" +
     "radfahrschule@adfc-muenchen.de\n" +
     "https://muenchen.adfc.de/radfahrschule\n";
 
@@ -938,7 +969,7 @@ function printKursMembers() {
   sheet.autoResizeColumns(1, sheet.getLastColumn());
   let range = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn());
   sheet.setActiveSelection(range);
-  //printSelectedRange(kurs);
+  printSelectedRange(kurs);
   //Utilities.sleep(10000);
   //ss.deleteSheet(sheet);
 }
@@ -1006,3 +1037,74 @@ function printSelectedRange(kurs: string) {
     "Drucke Auswahl",
   );
 }
+
+function checkBuchungManually() {
+  if (!inited) init();
+  let sheet = SpreadsheetApp.getActiveSheet();
+  if (sheet.getName() != "Buchungen") {
+    SpreadsheetApp.getUi().alert(
+      "Bitte eine Zeile im Sheet 'Buchungen' selektieren",
+    );
+    return;
+  }
+  let curCell = sheet.getSelection().getCurrentCell();
+  if (!curCell) {
+    SpreadsheetApp.getUi().alert("Bitte zuerst Teilnehmerzeile selektieren");
+    return;
+  }
+  let rowIdx = curCell.getRow();
+  if (rowIdx < 2 || rowIdx > sheet.getLastRow()) {
+    SpreadsheetApp.getUi().alert(
+      "Die ausgewählte Zeile ist ungültig, bitte zuerst Teilnehmerzeile selektieren",
+    );
+    return;
+  }
+  let rowNote = sheet.getRange(rowIdx, 1).getNote();
+  if (!isEmpty(rowNote)) {
+    SpreadsheetApp.getUi().alert(
+      "Die ausgewählte Zeile hat eine Notiz und ist deshalb ungültig",
+    );
+    return;
+  }
+  let brange = sheet.getRange(rowIdx, 1, 1, sheet.getLastColumn());
+  let brow = brange.getValues()[0];
+  if (!isEmpty(brow[anmeldebestIndex - 1])) {
+    SpreadsheetApp.getUi().alert(
+      "Die ausgewählte Buchung wurde schon bestätigt",
+    );
+    return;
+  }
+
+  let e: SSEvent = {
+    namedValues: {
+      Vorname: [brow[vornameIndex - 1]],
+      Name: [brow[nameIndex - 1]],
+      Anrede: [brow[herrFrauIndex - 1]],
+      "E-Mail-Adresse": [brow[mailIndex - 1]],
+      "Lastschrift: IBAN-Kontonummer": [
+        brow[headers["Buchungen"]["Lastschrift: IBAN-Kontonummer"] - 1],
+      ],
+      [kursFrage]: [brow[kursIndexB - 1]],
+    },
+    range: brange,
+  };
+  checkBuchung(e);
+}
+
+const upperDiff = "𝗔".codePointAt(0) - "A".codePointAt(0);
+const lowerDiff = "𝗮".codePointAt(0) - "a".codePointAt(0);
+const numberDiff = "𝟎".codePointAt(0) - "0".codePointAt(0);
+
+const isUpper = (n: number) => n >= 65 && n < 91;
+const isLower = (n: number) => n >= 97 && n < 123;
+const isNumber = (n: number) => n >= 48 && n < 58;
+
+const bolderize = (char: string) => {
+  const n = char.charCodeAt(0);
+  if (isUpper(n)) return String.fromCodePoint(n + upperDiff);
+  if (isLower(n)) return String.fromCodePoint(n + lowerDiff);
+  if (isNumber(n)) return String.fromCodePoint(n + numberDiff);
+  return char;
+};
+
+const bolderizeWord = (word: string) => [...word].map(bolderize).join("");
