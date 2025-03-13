@@ -1,0 +1,7 @@
+https://github.com/google/clasp?tab=readme-ov-file#migrating-from-2x-to-3x
+
+clasp derzeit 2.5.0: nom install -g @google/clasp@2.5.0
+dann Aufruf in  git/bash
+export NODE_OPTIONS="--no-deprecation"
+clasp login
+clasp push

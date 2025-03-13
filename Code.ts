@@ -20,6 +20,8 @@ let kursIndexB: number; // Welchen Kurs möchten Sie belegen?
 let herrFrauIndex: number; // Anrede
 let vornameIndex: number; // Vorname
 let nameIndex: number; // Name
+let hatGutscheinIndex: number; // Haben Sie einen Gutschein?
+let gutscheinCodeIndex: number; // Gutschein-Code
 let zustimmungsIndex: number; // Zustimmung zur SEPA-Lastschrift
 let bestätigungsIndex: number; // Bestätigung (der Teilnahmebedingungen)
 let verifikationsIndex: number; // Verifikation (der Email-Adresse)
@@ -47,6 +49,14 @@ let printCols = new Map([
 ]);
 
 const kursFrage = "Welchen Kurs möchten Sie belegen?";
+
+const mailEnde =
+  "\nMit freundlichen Grüßen,\n\n" +
+  "Allgemeiner Deutscher Fahrrad-Club München e.V.\n" +
+  "Platenstraße 4\n" +
+  "80336 München\n" +
+  "radfahrschule@adfc-muenchen.de\n" +
+  "https://muenchen.adfc.de/radfahrschule\n";
 
 interface SSEvent {
   namedValues: { [others: string]: string[] };
@@ -114,6 +124,8 @@ function init() {
       herrFrauIndex = sheetHeaders["Anrede"];
       vornameIndex = sheetHeaders["Vorname"];
       nameIndex = sheetHeaders["Name"];
+      hatGutscheinIndex = sheetHeaders["Haben Sie einen Gutschein?"];
+      gutscheinCodeIndex = sheetHeaders["Gutschein-Code"];
       zustimmungsIndex = sheetHeaders["Zustimmung zur SEPA-Lastschrift"];
       bestätigungsIndex = sheetHeaders["Bestätigung"];
       verifikationsIndex = sheetHeaders["Verifikation"];
@@ -174,9 +186,7 @@ function attachmentFiles(): GoogleAppsScript.Drive.File[] {
   let thisFile = DriveApp.getFileById(thisFileId);
   let parent = thisFile.getParents().next();
   let grandPa = parent.getParents().next();
-  let attachmentFolder = grandPa
-    .getFoldersByName("Anhänge für Anfänger")
-    .next();
+  let attachmentFolder = grandPa.getFoldersByName("Anhänge für Anfänger").next();
   let PDFs = attachmentFolder.getFilesByType("application/pdf"); // MimeType.PDF
   let files = [];
   while (PDFs.hasNext()) {
@@ -194,9 +204,7 @@ function anmeldebestätigung() {
   if (!updateReste()) return;
   let sheet = SpreadsheetApp.getActiveSheet();
   if (sheet.getName() != "Buchungen") {
-    SpreadsheetApp.getUi().alert(
-      "Bitte eine Zeile im Sheet 'Buchungen' selektieren",
-    );
+    SpreadsheetApp.getUi().alert("Bitte eine Zeile im Sheet 'Buchungen' selektieren");
     return;
   }
   let curCell = sheet.getSelection().getCurrentCell();
@@ -211,14 +219,10 @@ function anmeldebestätigung() {
     );
     return;
   }
-  let rowValues = sheet
-    .getRange(row, 1, 1, sheet.getLastColumn())
-    .getValues()[0];
+  let rowValues = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
   let rowNote = sheet.getRange(row, 1).getNote();
   if (!isEmpty(rowNote)) {
-    SpreadsheetApp.getUi().alert(
-      "Die ausgewählte Zeile hat eine Notiz und ist deshalb ungültig",
-    );
+    SpreadsheetApp.getUi().alert("Die ausgewählte Zeile hat eine Notiz und ist deshalb ungültig");
     return;
   }
   if (isEmpty(rowValues[verifikationsIndex - 1])) {
@@ -242,10 +246,13 @@ function anmeldebestätigung() {
   let kurs: string = rowValues[kursIndexB - 1];
 
   let betrag: number = kursPreis(kurs);
-  let zahlungsText =
-    "Wir ziehen die Teilnahmegebühr von " +
-    betrag +
-    "€ in den nächsten Tagen ein.";
+  let zahlungsText;
+  if (rowValues[gutscheinCodeIndex - 1].trim().length > 0) {
+    zahlungsText =
+      "Sie haben bei der Buchung einen gültigen Gutschein eingelöst. Der Kurs ist für Sie daher gratis.";
+  } else {
+    zahlungsText = "Wir ziehen die Teilnahmegebühr von " + betrag + "€ in den nächsten Tagen ein.";
+  }
 
   let kursRow = null;
   let kurseS: Array<Array<string>> = kurseSheet.getSheetValues(
@@ -281,15 +288,9 @@ function anmeldebestätigung() {
   if (!isEmpty(kursRow[tag1Index + 6]))
     termine.push(any2Str(kursRow[tag1Index + 6], "E 'den' dd.MM", false));
   if (!isEmpty(kursRow[ersatz1Index - 1]))
-    termine.push(
-      "Ersatztermin 1: " +
-        any2Str(kursRow[ersatz1Index - 1], "E 'den' dd.MM", false),
-    );
+    termine.push("Ersatztermin 1: " + any2Str(kursRow[ersatz1Index - 1], "E 'den' dd.MM", false));
   if (!isEmpty(kursRow[ersatz2Index - 1]))
-    termine.push(
-      "Ersatztermin 2: " +
-        any2Str(kursRow[ersatz2Index - 1], "E 'den' dd.MM", false),
-    );
+    termine.push("Ersatztermin 2: " + any2Str(kursRow[ersatz2Index - 1], "E 'den' dd.MM", false));
   termine.push("jeweils von " + kursRow[uhrZeitIndex - 1]);
   Logger.log("termine %s", termine);
 
@@ -298,9 +299,7 @@ function anmeldebestätigung() {
   template.termine = termine;
   template.zahlungstext = zahlungsText;
 
-  SpreadsheetApp.getUi().alert(
-    herrFrau + " " + name + " bucht den Kurs " + kurs,
-  );
+  SpreadsheetApp.getUi().alert(herrFrau + " " + name + " bucht den Kurs " + kurs);
 
   let htmlText: string = template.evaluate().getContent();
   let textbody = "HTML only";
@@ -348,30 +347,17 @@ function verifyEmail() {
   let evSheet = ssheet.getSheetByName("Email-Verifikation");
   if (evSheet.getLastRow() < 2) return;
   // It is a big nuisance that getSheetValues with a row count of 0 throws an error, instead of returning an empty list.
-  let evalues = evSheet.getSheetValues(
-    2,
-    1,
-    evSheet.getLastRow() - 1,
-    evSheet.getLastColumn(),
-  ); // Mit dieser Email-Adresse
+  let evalues = evSheet.getSheetValues(2, 1, evSheet.getLastRow() - 1, evSheet.getLastColumn()); // Mit dieser Email-Adresse
 
   let numRows = buchungenSheet.getLastRow();
   if (numRows < 2) return;
-  let bvalues = buchungenSheet.getSheetValues(
-    2,
-    1,
-    numRows - 1,
-    buchungenSheet.getLastColumn(),
-  );
+  let bvalues = buchungenSheet.getSheetValues(2, 1, numRows - 1, buchungenSheet.getLastColumn());
   Logger.log("bvalues %s", bvalues);
 
   for (let bx in bvalues) {
     let bxi = +bx; // confusingly, bx is initially a string, and is interpreted as A1Notation in sheet.getRange(bx) !
     let brow = bvalues[bxi];
-    if (
-      !isEmpty(brow[mailIndex - 1]) &&
-      isEmpty(brow[verifikationsIndex - 1])
-    ) {
+    if (!isEmpty(brow[mailIndex - 1]) && isEmpty(brow[verifikationsIndex - 1])) {
       let baddr = (brow[1] as string).toLowerCase();
       for (let ex in evalues) {
         let erow = evalues[ex];
@@ -401,13 +387,7 @@ function sendVerifEmail(rowValues: any[]) {
     ",\nvielen Dank, dass Sie Ihre E-Mail Adresse verifiziert haben.\n" +
     "In ein bis zwei Tagen bekommen Sie von uns die Bestätigung,\ndass Sie " +
     "bei dem Kurs in der Radfahrschule einen freien Platz bekommen.\n" +
-    "Mit freundlichen Grüßen,\n\n" +
-    "Allgemeiner Deutscher Fahrrad-Club München e.V.\n" +
-    "Platenstraße 4\n" +
-    "80336 München\n" +
-    "Tel. 089 | 46133830 (Mo. bis Mi. + Fr.)\n" +
-    "radfahrschule@adfc-muenchen.de\n" +
-    "https://muenchen.adfc.de/radfahrschule\n";
+    mailEnde;
   let options = {
     name: "Radfahrschule ADFC München e.V.",
     replyTo: "radfahrschule@adfc-muenchen.de",
@@ -421,23 +401,27 @@ function checkBuchung(e: SSEvent) {
   let sheet = range.getSheet();
   let row = range.getRow();
   let cellA = range.getCell(1, 1);
+  let emailTo = e.namedValues["E-Mail-Adresse"][0].toLowerCase().trim();
   Logger.log("sheet %s row %s cellA %s", sheet, row, cellA.getA1Notation());
 
-  let ibanNV = e.namedValues["Lastschrift: IBAN-Kontonummer"][0];
-  let iban = ibanNV.replace(/\s/g, "").toUpperCase();
-  let emailTo = e.namedValues["E-Mail-Adresse"][0].toLowerCase().trim();
-  Logger.log("iban=%s emailTo=%s %s", iban, emailTo, typeof emailTo);
-  if (!isValidIban(iban)) {
-    sendWrongIbanEmail(anrede(e), emailTo, iban);
-    cellA.setNote("Ungültige IBAN");
+  let gutSchein = e.namedValues["Gutschein-Code"][0].trim();
+  if (gutSchein.length == 0) {
+    let ibanNV = e.namedValues["Lastschrift: IBAN-Kontonummer"][0];
+    let iban = ibanNV.replace(/\s/g, "").toUpperCase();
+    Logger.log("iban=%s emailTo=%s %s", iban, emailTo, typeof emailTo);
+    if (!isValidIban(iban)) {
+      sendWrongIbanEmail(anrede(e), emailTo, iban);
+      cellA.setNote("Ungültige IBAN");
+      return;
+    }
+    if (iban != ibanNV) {
+      let cellIban = range.getCell(1, headers["Buchungen"]["Lastschrift: IBAN-Kontonummer"]);
+      cellIban.setValue(iban);
+    }
+  } else if (!checkGutschein(gutSchein)) {
+    sendWrongGutscheinEmail(anrede(e), emailTo, gutSchein);
+    cellA.setNote("Ungültiger Gutschein");
     return;
-  }
-  if (iban != ibanNV) {
-    let cellIban = range.getCell(
-      1,
-      headers["Buchungen"]["Lastschrift: IBAN-Kontonummer"],
-    );
-    cellIban.setValue(iban);
   }
   // Die Zellen Zustimmung und Bestätigung sind im Formular als Pflichtantwort eingetragen
   // und können garnicht anders als gesetzt sein. Sonst hier prüfen analog zu IBAN.
@@ -500,10 +484,7 @@ function sendeAntwort(
   let ss = SpreadsheetApp.getActiveSpreadsheet();
   let evSheet = ss.getSheetByName("Email-Verifikation");
   let numRows = evSheet.getLastRow();
-  let evalues =
-    numRows < 2
-      ? []
-      : evSheet.getSheetValues(2, 1, evSheet.getLastRow() - 1, 3);
+  let evalues = numRows < 2 ? [] : evSheet.getSheetValues(2, 1, evSheet.getLastRow() - 1, 3);
   for (let i = 0; i < evalues.length; i++) {
     // Mit dieser Email-Adresse
     if (evalues[i][2].toLowerCase().trim() === emailTo) {
@@ -580,12 +561,8 @@ function updateReste(): boolean {
     buchungenVals = [];
     buchungenNotes = [];
   } else {
-    buchungenVals = buchungenSheet
-      .getRange(2, 1, buchungenRows, buchungenCols)
-      .getValues();
-    buchungenNotes = buchungenSheet
-      .getRange(2, 1, buchungenRows, buchungenCols)
-      .getNotes();
+    buchungenVals = buchungenSheet.getRange(2, 1, buchungenRows, buchungenCols).getValues();
+    buchungenNotes = buchungenSheet.getRange(2, 1, buchungenRows, buchungenCols).getNotes();
   }
 
   let gebuchtMap: MapS2I = {};
@@ -616,13 +593,7 @@ function updateReste(): boolean {
     if (rest !== restR) {
       kurseSheet.getRange(2 + r, restIndex).setValue(rest);
       SpreadsheetApp.getUi().alert(
-        "Freie Plätze des Kurses '" +
-          kurs +
-          "' von " +
-          restR +
-          " auf " +
-          rest +
-          " geändert!",
+        "Freie Plätze des Kurses '" + kurs + "' von " + restR + " auf " + rest + " geändert!",
       );
     }
   }
@@ -650,14 +621,8 @@ function updateForm() {
     for (let hdr in kurseHdrs) {
       let idx = kurseHdrs[hdr];
       if (idx > restIndex) continue;
-      if (
-        !hdr.startsWith("Tag") &&
-        !hdr.startsWith("Ersatztermin") &&
-        isEmpty(kurseObj[hdr])
-      ) {
-        SpreadsheetApp.getUi().alert(
-          "Das Feld " + hdr + " darf nicht leer sein!",
-        );
+      if (!hdr.startsWith("Tag") && !hdr.startsWith("Ersatztermin") && isEmpty(kurseObj[hdr])) {
+        SpreadsheetApp.getUi().alert("Das Feld " + hdr + " darf nicht leer sein!");
         return;
       }
     }
@@ -748,18 +713,8 @@ function sendWrongIbanEmail(anrede: string, empfaenger: string, iban: string) {
     anrede +
     ",\nDie von Ihnen bei der Buchung von ADFC Anfängerkursen übermittelte IBAN " +
     iban +
-    " ist leider falsch! Bitte wiederholen Sie die Buchung mit einer korrekten IBAN.";
-
-  body =
-    body +
-    "\nMit freundlichen Grüßen,\n\n" +
-    "Allgemeiner Deutscher Fahrrad-Club München e.V.\n" +
-    "Platenstraße 4\n" +
-    "80336 München\n" +
-    "Tel. 089 | 46133830 (Mo. 10-11 Uhr, Fr. 12-13 Uhr)\n" +
-    "radfahrschule@adfc-muenchen.de\n" +
-    "https://muenchen.adfc.de/radfahrschule\n";
-
+    " ist leider falsch! Bitte wiederholen Sie die Buchung mit einer korrekten IBAN.\n" +
+    mailEnde;
   GmailApp.sendEmail(empfaenger, subject, body);
 }
 
@@ -845,11 +800,7 @@ function isValidIban(iban: string): boolean {
 
 // I need any2str because a date copied to temp sheet showed as date.toString().
 // A ' in front of the date came too late.
-function any2Str(
-  val: any,
-  fmt: string = "E dd.MM",
-  short: boolean = true,
-): string {
+function any2Str(val: any, fmt: string = "E dd.MM", short: boolean = true): string {
   if (typeof val == "object" && "getUTCHours" in val) {
     let d = Utilities.formatDate(
       val,
@@ -885,16 +836,12 @@ function printKursMembers() {
   if (!inited) init();
   let sheet = SpreadsheetApp.getActiveSheet();
   if (sheet.getName() != "Kurse") {
-    SpreadsheetApp.getUi().alert(
-      "Bitte eine Zeile im Sheet 'Kurse' selektieren",
-    );
+    SpreadsheetApp.getUi().alert("Bitte eine Zeile im Sheet 'Kurse' selektieren");
     return;
   }
   let curCell = sheet.getSelection().getCurrentCell();
   if (!curCell) {
-    SpreadsheetApp.getUi().alert(
-      "Bitte zuerst eine Zeile im Sheet 'Kurse' selektieren",
-    );
+    SpreadsheetApp.getUi().alert("Bitte zuerst eine Zeile im Sheet 'Kurse' selektieren");
     return;
   }
   let row = curCell.getRow();
@@ -904,14 +851,10 @@ function printKursMembers() {
     );
     return;
   }
-  let rowValues = sheet
-    .getRange(row, 1, 1, sheet.getLastColumn())
-    .getValues()[0];
+  let rowValues = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
   let rowNote = sheet.getRange(row, 1).getNote();
   if (!isEmpty(rowNote)) {
-    SpreadsheetApp.getUi().alert(
-      "Die ausgewählte Zeile hat eine Notiz und ist deshalb ungültig",
-    );
+    SpreadsheetApp.getUi().alert("Die ausgewählte Zeile hat eine Notiz und ist deshalb ungültig");
     return;
   }
   let kurs: string = rowValues[kursNameIndex - 1];
@@ -925,9 +868,7 @@ function printKursMembers() {
     SpreadsheetApp.getUi().alert("Keine Buchungen gefunden");
     return;
   }
-  buchungenVals = buchungenSheet
-    .getRange(2, 1, buchungenRows, buchungenCols)
-    .getValues();
+  buchungenVals = buchungenSheet.getRange(2, 1, buchungenRows, buchungenCols).getValues();
   buchungenNotes = buchungenSheet.getRange(2, 1, buchungenRows, 1).getNotes();
 
   let ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -1032,19 +973,14 @@ function printSelectedRange(kurs: string) {
   let ev = htmlTemplate.evaluate();
   Logger.log("ev2" + ev.getContent());
 
-  SpreadsheetApp.getUi().showModalDialog(
-    ev.setHeight(10).setWidth(100),
-    "Drucke Auswahl",
-  );
+  SpreadsheetApp.getUi().showModalDialog(ev.setHeight(10).setWidth(100), "Drucke Auswahl");
 }
 
 function checkBuchungManually() {
   if (!inited) init();
   let sheet = SpreadsheetApp.getActiveSheet();
   if (sheet.getName() != "Buchungen") {
-    SpreadsheetApp.getUi().alert(
-      "Bitte eine Zeile im Sheet 'Buchungen' selektieren",
-    );
+    SpreadsheetApp.getUi().alert("Bitte eine Zeile im Sheet 'Buchungen' selektieren");
     return;
   }
   let curCell = sheet.getSelection().getCurrentCell();
@@ -1061,17 +997,13 @@ function checkBuchungManually() {
   }
   let rowNote = sheet.getRange(rowIdx, 1).getNote();
   if (!isEmpty(rowNote)) {
-    SpreadsheetApp.getUi().alert(
-      "Die ausgewählte Zeile hat eine Notiz und ist deshalb ungültig",
-    );
+    SpreadsheetApp.getUi().alert("Die ausgewählte Zeile hat eine Notiz und ist deshalb ungültig");
     return;
   }
   let brange = sheet.getRange(rowIdx, 1, 1, sheet.getLastColumn());
   let brow = brange.getValues()[0];
   if (!isEmpty(brow[anmeldebestIndex - 1])) {
-    SpreadsheetApp.getUi().alert(
-      "Die ausgewählte Buchung wurde schon bestätigt",
-    );
+    SpreadsheetApp.getUi().alert("Die ausgewählte Buchung wurde schon bestätigt");
     return;
   }
 
@@ -1081,6 +1013,7 @@ function checkBuchungManually() {
       Name: [brow[nameIndex - 1]],
       Anrede: [brow[herrFrauIndex - 1]],
       "E-Mail-Adresse": [brow[mailIndex - 1]],
+      "Gutschein-Code": [brow[gutscheinCodeIndex - 1]],
       "Lastschrift: IBAN-Kontonummer": [
         brow[headers["Buchungen"]["Lastschrift: IBAN-Kontonummer"] - 1],
       ],
@@ -1108,3 +1041,18 @@ const bolderize = (char: string) => {
 };
 
 const bolderizeWord = (word: string) => [...word].map(bolderize).join("");
+
+function checkGutschein(gutSchein: string) {
+  return gutSchein.length == 10;
+}
+
+function sendWrongGutscheinEmail(anrede: string, empfaenger: string, code: string) {
+  var subject = "Falsche IBAN";
+  var body =
+    anrede +
+    ",\nDer von Ihnen bei der Buchung von ADFC Fortgeschrittenenkursen übermittelte Gutschein-Code " +
+    code +
+    " ist leider falsch! Bitte wiederholen Sie die Buchung mit einem korrekten Gutschein-Code.\n" +
+    mailEnde;
+  GmailApp.sendEmail(empfaenger, subject, body);
+}
