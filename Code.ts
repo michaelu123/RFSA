@@ -26,7 +26,8 @@ let zustimmungsIndex: number; // Zustimmung zur SEPA-Lastschrift
 let bestätigungsIndex: number; // Bestätigung (der Teilnahmebedingungen)
 let verifikationsIndex: number; // Verifikation (der Email-Adresse)
 let anmeldebestIndex: number; // Anmeldebestätigung (gesendet)
-let bezahltIndex: number; // Bezahlt
+let ermäßigungIndex: number; // Ermäßigung
+// let bezahltIndex: number; // Bezahlt
 
 // Kurse
 let kursNameIndex: number; // Kursname
@@ -130,7 +131,8 @@ function init() {
       bestätigungsIndex = sheetHeaders["Bestätigung"];
       verifikationsIndex = sheetHeaders["Verifikation"];
       anmeldebestIndex = sheetHeaders["Anmeldebestätigung"];
-      bezahltIndex = sheetHeaders["Bezahlt"];
+      ermäßigungIndex = sheetHeaders["Ermäßigung"];
+      // bezahltIndex = sheetHeaders["Bezahlt"];
 
       if (verifikationsIndex == null) {
         verifikationsIndex = addColumn(sheet, sheetHeaders, "Verifikation");
@@ -138,9 +140,9 @@ function init() {
       if (anmeldebestIndex == null) {
         anmeldebestIndex = addColumn(sheet, sheetHeaders, "Anmeldebestätigung");
       }
-      if (bezahltIndex == null) {
-        bezahltIndex = addColumn(sheet, sheetHeaders, "Bezahlt");
-      }
+      // if (bezahltIndex == null) {
+      //   bezahltIndex = addColumn(sheet, sheetHeaders, "Bezahlt");
+      // }
     }
     inited = true;
   }
@@ -181,7 +183,7 @@ function heuteString(): string {
   );
 }
 
-function attachmentFiles(): GoogleAppsScript.Drive.File[] {
+function attachmentFiles(was: string): GoogleAppsScript.Drive.File[] {
   let thisFileId = SpreadsheetApp.getActive().getId();
   let thisFile = DriveApp.getFileById(thisFileId);
   let parent = thisFile.getParents().next();
@@ -190,13 +192,18 @@ function attachmentFiles(): GoogleAppsScript.Drive.File[] {
   let PDFs = attachmentFolder.getFilesByType("application/pdf"); // MimeType.PDF
   let files = [];
   while (PDFs.hasNext()) {
-    files.push(PDFs.next());
+    let f = PDFs.next();
+    if (was == "alles") {
+      files.push(f);
+    } else if (f.getName().startsWith(was)) {
+      files.push(f);
+    }
   }
-  return files; // why not use PDFs directly??
+  return files;
 }
 
-function kursPreis(_kurs: string): number {
-  return 120;
+function kursPreis(ermäßigung: string): number {
+  return ermäßigung == "Ja" ? 40 : 120;
 }
 
 function anmeldebestätigung() {
@@ -245,7 +252,7 @@ function anmeldebestätigung() {
 
   let kurs: string = rowValues[kursIndexB - 1];
 
-  let betrag: number = kursPreis(kurs);
+  let betrag: number = kursPreis(rowValues[ermäßigungIndex - 1]);
   let zahlungsText;
   if (rowValues[gutscheinCodeIndex - 1].trim().length > 0) {
     zahlungsText =
@@ -302,16 +309,93 @@ function anmeldebestätigung() {
   SpreadsheetApp.getUi().alert(herrFrau + " " + name + " bucht den Kurs " + kurs);
 
   let htmlText: string = template.evaluate().getContent();
-  let textbody = "HTML only";
-  let options = {
-    htmlBody: htmlText,
-    name: "Radfahrschule ADFC München e.V.",
-    replyTo: "radfahrschule@adfc-muenchen.de",
-    attachments: attachmentFiles(),
-  };
-  GmailApp.sendEmail(emailTo, subject, textbody, options);
+  try {
+    sendMail(emailTo, subject, htmlText, attachmentFiles("alles"));
+    // SpreadsheetApp.getUi().alert("Bestätigung an " + herrFrau + " " + name + " gesendet");
+  } catch (error) {
+    console.log("error", error);
+    SpreadsheetApp.getUi().alert("Fehler: " + error);
+    return;
+  }
+
   // update sheet
   sheet.getRange(row, anmeldebestIndex).setValue(heuteString());
+}
+
+function sendeFAQ() {
+  if (!inited) init();
+  let sheet = SpreadsheetApp.getActiveSheet();
+  if (sheet.getName() != "Buchungen") {
+    SpreadsheetApp.getUi().alert("Bitte eine Zeile im Sheet 'Buchungen' selektieren");
+    return;
+  }
+  let curCell = sheet.getSelection().getCurrentCell();
+  if (!curCell) {
+    SpreadsheetApp.getUi().alert("Bitte zuerst Teilnehmerzeile selektieren");
+    return;
+  }
+  let row = curCell.getRow();
+  if (row < 2 || row > sheet.getLastRow()) {
+    SpreadsheetApp.getUi().alert(
+      "Die ausgewählte Zeile ist ungültig, bitte zuerst Teilnehmerzeile selektieren",
+    );
+    return;
+  }
+  let rowValues = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
+  let rowNote = sheet.getRange(row, 1).getNote();
+  if (!isEmpty(rowNote)) {
+    SpreadsheetApp.getUi().alert("Die ausgewählte Zeile hat eine Notiz und ist deshalb ungültig");
+    return;
+  }
+  // setting up mail
+  let emailTo: string = rowValues[mailIndex - 1].toLowerCase().trim();
+  let subject: string = "Antworten auf häufige Fragen (FAQ)";
+  let herrFrau = rowValues[herrFrauIndex - 1];
+  let name = rowValues[nameIndex - 1];
+  // Anrede
+  let anrede: string = anredeText(herrFrau, name);
+  let template: GoogleAppsScript.HTML.HtmlTemplate =
+    HtmlService.createTemplateFromFile("emailFAQ.html");
+  template.anrede = anrede;
+
+  let htmlText: string = template.evaluate().getContent();
+  try {
+    sendMail(emailTo, subject, htmlText, attachmentFiles("FAQ"));
+    SpreadsheetApp.getUi().alert("FAQ an " + herrFrau + " " + name + " gesendet");
+  } catch (error) {
+    console.log("error", error);
+    SpreadsheetApp.getUi().alert("Fehler: " + error);
+  }
+}
+
+function sendMail(
+  emailTo: string,
+  subject: string,
+  htmlText: string,
+  attachments: GoogleAppsScript.Drive.File[],
+) {
+  let textbody = "HTML only";
+  let options;
+  try {
+    options = {
+      htmlBody: htmlText,
+      name: "Radfahrschule ADFC München e.V.",
+      replyTo: "radfahrschule@adfc-muenchen.de",
+      from: "radfahrschule@adfc-muenchen.de",
+      attachments,
+    };
+    GmailApp.sendEmail(emailTo, subject, textbody, options);
+  } catch (error) {
+    // without "from"
+    console.log("retry sendEmail without from parameter");
+    options = {
+      htmlBody: htmlText,
+      name: "Radfahrschule ADFC München e.V.",
+      replyTo: "radfahrschule@adfc-muenchen.de",
+      attachments,
+    };
+    GmailApp.sendEmail(emailTo, subject, textbody, options);
+  }
 }
 
 function onOpen() {
@@ -320,6 +404,7 @@ function onOpen() {
   ui.createMenu("ADFC-RFSA")
     // .addItem("Test", "test")
     .addItem("Anmeldebestätigung senden", "anmeldebestätigung")
+    .addItem("FAQ senden", "sendeFAQ")
     .addItem("Update", "update")
     .addItem("Kursteilnehmer drucken", "printKursMembers")
     .addItem("Anmeldung prüfen", "checkBuchungManually")
@@ -507,13 +592,13 @@ function sendeAntwort(
     templateFile === "emailVerif.html"
       ? "Bestätigung Ihrer Email-Adresse"
       : "Bestätigung Ihrer Anmeldung";
-  let textbody = "HTML only";
-  let options = {
-    htmlBody: htmlText,
-    name: "Radfahrschule ADFC München e.V.",
-    replyTo: "radfahrschule@adfc-muenchen.de",
-  };
-  GmailApp.sendEmail(emailTo, subject, textbody, options);
+  try {
+    sendMail(emailTo, subject, htmlText, []);
+    // SpreadsheetApp.getUi().alert("Bestätigung an " + herrFrau + " " + name + " gesendet");
+  } catch (error) {
+    console.log("error", error);
+    SpreadsheetApp.getUi().alert("Fehler: " + error);
+  }
 }
 
 function anrede(e: SSEvent): string {

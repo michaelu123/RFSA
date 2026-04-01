@@ -1,49 +1,57 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <base target="_top" />
-  </head>
-  <body>
-    <p>
-      <?= anrede ?>,<br /><br />
-      hiermit bestätigen wir Ihnen, daß Sie für den Radfahrkurs <br />
-      <?= kurs ?><br />
-      verbindlich angemeldet sind. Die Kurstermine sind:<br />
 
-      <? for (let termin of termine) { ?>
-      &nbsp;&nbsp;&nbsp;&nbsp;<?= termin ?><br />
-      <? } ?>
-      <?= zahlungstext ?><br />
+<head>
+  <base target="_top" />
+</head>
 
-      <? if (kurs.includes("RIEM")) { ?>
-      Ihr Kurs findet in Riem statt. Treffpunkt ist die Heinrich-Böll-Str. 5, 81829 München.<br />
-      Die nächste U-Bahn-Haltestelle ist die "Messestadt Ost", Ausgang Willy-Brandt-Allee.<br />
-      <a href="https://w3w.co/herd.ansprechend.lebhaft">Karte</a><br />
-      <? } else { ?>
-      Ihr Kurs findet auf der Theresienwiese statt.<br />
-      Treffpunkt ist das ADFC Radlerhaus, Platenstraße 4, 80336 München.<br />
-      <a href="https://w3w.co/neuerung.faden.meinen">Karte</a><br />
-      <? } ?>
-      Von den Teilnahmebedingungen habe Sie bereits mit Ihrer Anmeldung<br />
-      Kenntnis genommen. Anregungen und Tipps für Teilnehmende sind im<br />
-      Anhang dieser Mail beigefügt. Bitte lesen Sie die<br />
-      Teilnahmebedingungen und die Tipps für Teilnehmende vor Kursbeginn<br />
-      nochmal kurz durch und seien Sie bitte am ersten Kurstag möglichst<br />
-      etwas früher da.<br />
-      <br />
-      Von Ihren Kursleitern werden Sie einige Tage vor Kursbeginn nochmals angeschrieben.<br />
-      <br />
-      Drei Monate nach dem letzten Trainingstag werden wir Sie bitten, an einer Online-Befragung
-      teilzunehmen. Mit einem anonymen Online-Fragebogen wollen wir wissen, wie Sie zu unserem Kurs
-      gekommen sind und wie es bei Ihnen mit dem Fahrradfahren weitergegangen ist.
-      <br />
-      Wir wünschen Ihnen viel Spaß und Erfolg in Ihrem Kurs.<br />
-      <br />
-      Allgemeiner Deutscher Fahrrad-Club München e.V.<br />
-      Platenstraße 4<br />
-      80336 München<br />
-      radfahrschule@adfc-muenchen.de<br />
-      https://muenchen.adfc.de/radfahrschule<br />
-    </p>
-  </body>
+<body>
+  <p>
+    <?= anrede ?>,<br /><br />
+    hiermit bestätigen wir Ihnen, daß Sie für den Radfahrkurs <br />
+    <?= kurs ?><br />
+    verbindlich angemeldet sind. Die Kurstermine sind:<br />
+
+    <? for (let termin of termine) { ?>
+    &nbsp;&nbsp;&nbsp;&nbsp;<?= termin ?><br />
+    <? } ?>
+    <?= zahlungstext ?><br />
+
+    <? if (kurs.includes("RIEM")) { ?>
+    Ihr Kurs findet in Riem statt. Treffpunkt ist Willy-Brandt-Allee 26 / Ecke Heinrich-Böll-Str., 81829 München.<br />
+    Die nächste U-Bahn-Haltestelle ist die “Messestadt Ost", Ausgang „Heinrich-Böll-Str.“<br />
+    <a href="https://w3w.co/herd.ansprechend.lebhaft">Karte</a><br />
+    <? } else { ?>
+    Ihr Kurs findet auf der Theresienwiese statt.<br />
+    Treffpunkt ist das ADFC Radlerhaus, Platenstraße 4, 80336 München.<br />
+    <a href="https://w3w.co/neuerung.faden.meinen">Karte</a><br />
+    <? } ?>
+    <b>
+      Achtung: Falls Trainer oder Trainerin einen oder mehrere Termine wegen sehr schlechtem
+      Wetter verschieben, wird das Training am Ersatztermin nachgeholt. Bei schlechtem Wetter
+      entscheiden die Trainer, ob der Kurs verschoben wird.<br />
+    </b>
+    Von den Teilnahmebedingungen habe Sie bereits mit Ihrer Anmeldung<br />
+    Kenntnis genommen. Anregungen und Tipps für Teilnehmende sind im<br />
+    Anhang dieser Mail beigefügt. Bitte lesen Sie die<br />
+    Teilnahmebedingungen und die Tipps für Teilnehmende vor Kursbeginn<br />
+    nochmal kurz durch und seien Sie bitte am ersten Kurstag möglichst<br />
+    etwas früher da.<br />
+    <br />
+    Von Ihren Kursleitern werden Sie einige Tage vor Kursbeginn nochmals angeschrieben.<br />
+    <br />
+    Drei Monate nach dem letzten Trainingstag werden wir Sie bitten, an einer Online-Befragung
+    teilzunehmen. Mit einem anonymen Online-Fragebogen wollen wir wissen, wie Sie zu unserem Kurs
+    gekommen sind und wie es bei Ihnen mit dem Fahrradfahren weitergegangen ist.
+    <br />
+    Wir wünschen Ihnen viel Spaß und Erfolg in Ihrem Kurs.<br />
+    <br />
+    Allgemeiner Deutscher Fahrrad-Club München e.V.<br />
+    Platenstraße 4<br />
+    80336 München<br />
+    radfahrschule@adfc-muenchen.de<br />
+    https://muenchen.adfc.de/radfahrschule<br />
+  </p>
+</body>
+
 </html>
